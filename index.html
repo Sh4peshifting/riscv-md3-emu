@@ -19,29 +19,9 @@
 
     <main class="container">
         <section class="pane editor-pane">
-            <div class="card elevation-1">
+            <div class="card elevation-1 full-height">
                 <div class="card-header">
                     <h2>Assembly Code</h2>
-                </div>
-                <div class="editor-wrapper">
-                    <textarea id="source-code" spellcheck="false" placeholder="# Write your RISC-V assembly here...
-.global _start
-_start:
-    li a0, 42
-    ebreak"></textarea>
-                </div>
-                <div class="controls-area">
-                    <div class="button-group">
-                        <button id="btn-run" class="md-btn md-btn-filled">
-                            <span class="material-symbols-outlined">play_arrow</span> Run
-                        </button>
-                        <button id="btn-step" class="md-btn md-btn-outlined" disabled>
-                            <span class="material-symbols-outlined">redo</span> Step
-                        </button>
-                        <button id="btn-reset" class="md-btn md-btn-text">
-                            <span class="material-symbols-outlined">restart_alt</span> Reset
-                        </button>
-                    </div>
                     <div class="toggles">
                         <label class="checkbox-container">
                             <input type="checkbox" id="check-pause" checked>
@@ -50,24 +30,71 @@ _start:
                         </label>
                     </div>
                 </div>
-                <div id="status-message" class="status-bar hidden"></div>
+                <div class="editor-wrapper">
+                    <textarea id="source-code" spellcheck="false" placeholder="# RISC-V Assembly
+.global _start
+_start:
+    li a0, 42
+    ebreak"></textarea>
+                </div>
+                
+                <div class="controls-area">
+                    <div class="button-group">
+                        <button id="btn-start-stop" class="md-btn md-btn-filled">
+                            <span class="material-symbols-outlined">power_settings_new</span> Start
+                        </button>
+                        <div class="separator"></div>
+                        <button id="btn-run" class="md-btn md-btn-tonal" disabled>
+                            <span class="material-symbols-outlined">play_arrow</span> Run
+                        </button>
+                        <button id="btn-step" class="md-btn md-btn-outlined" disabled>
+                            <span class="material-symbols-outlined">redo</span> Step
+                        </button>
+                    </div>
+                    <div id="status-message" class="status-bar hidden"></div>
+                </div>
             </div>
         </section>
 
         <section class="pane status-pane">
             <div class="card elevation-1">
-                <div class="card-header">
-                    <h2>Registers</h2>
+                <div class="card-header compact">
+                    <h2>Registers (x0-x31)</h2>
                     <span class="badge" id="pc-badge">PC: 0x00000000</span>
                 </div>
-                <div class="registers-grid" id="registers-container">
-                    </div>
+                <div class="registers-grid" id="registers-container"></div>
             </div>
 
             <div class="card elevation-1">
-                <div class="card-header">
-                    <h2>Output / Serial</h2>
-                    <button id="btn-clear-term" class="icon-btn" title="Clear Output">
+                <div class="card-header compact">
+                    <h2>CSR & Status</h2>
+                </div>
+                <div class="csr-container" id="csr-container">
+                    <div class="csr-group">
+                        <div class="csr-item"><span class="label">priv:</span> <span id="csr-priv" class="value">3 (Machine)</span></div>
+                        <div class="csr-item"><span class="label">mstatus:</span> <span id="csr-mstatus" class="value">0x00000000</span></div>
+                        <div class="csr-item"><span class="label">MPP:</span> <span id="csr-mpp" class="value">0 (User)</span></div>
+                    </div>
+                    <div class="csr-divider"></div>
+                    <div class="csr-grid">
+                        <div class="csr-item"><span class="label">mscratch:</span> <span id="csr-mscratch" class="value">0x00000000</span></div>
+                        <div class="csr-item"><span class="label">mtvec:</span> <span id="csr-mtvec" class="value">0x00000000</span></div>
+                        <div class="csr-item"><span class="label">mepc:</span> <span id="csr-mepc" class="value">0x00000000</span></div>
+                        <div class="csr-item"><span class="label">mtval:</span> <span id="csr-mtval" class="value">0x00000000</span></div>
+                        <div class="csr-item full-width"><span class="label">mcause:</span> <span id="csr-mcause" class="value">0x00000000</span></div>
+                    </div>
+                    <div class="csr-divider"></div>
+                    <div class="csr-counters">
+                        <div class="csr-item"><span class="label">cycle:</span> <span id="csr-cycle" class="value">0x00000000_00000000</span></div>
+                        <div class="csr-item"><span class="label">instret:</span> <span id="csr-instret" class="value">0x00000000_00000000</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card elevation-1 terminal-card">
+                <div class="card-header compact">
+                    <h2>Terminal</h2>
+                    <button id="btn-clear-term" class="icon-btn" title="Clear">
                         <span class="material-symbols-outlined">delete</span>
                     </button>
                 </div>

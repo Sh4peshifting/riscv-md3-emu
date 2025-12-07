@@ -1,22 +1,33 @@
-// SPDX-License-Identifier: CC0-1.0 OR 0BSD
 import { RiscvState, RiscvMemory } from './emulator.js';
 import { assemble_riscv } from './assembler.js';
 
 // --- UI Elements ---
 const els = {
     editor: document.getElementById('source-code'),
+    btnStartStop: document.getElementById('btn-start-stop'),
     btnRun: document.getElementById('btn-run'),
     btnStep: document.getElementById('btn-step'),
-    btnReset: document.getElementById('btn-reset'),
     btnClearTerm: document.getElementById('btn-clear-term'),
     checkPause: document.getElementById('check-pause'),
     regContainer: document.getElementById('registers-container'),
     terminal: document.getElementById('terminal-output'),
     statusMsg: document.getElementById('status-message'),
-    pcBadge: document.getElementById('pc-badge')
+    pcBadge: document.getElementById('pc-badge'),
+    
+    // CSR Elements
+    csrPriv: document.getElementById('csr-priv'),
+    csrMstatus: document.getElementById('csr-mstatus'),
+    csrMpp: document.getElementById('csr-mpp'),
+    csrMscratch: document.getElementById('csr-mscratch'),
+    csrMtvec: document.getElementById('csr-mtvec'),
+    csrMepc: document.getElementById('csr-mepc'),
+    csrMtval: document.getElementById('csr-mtval'),
+    csrMcause: document.getElementById('csr-mcause'),
+    csrCycle: document.getElementById('csr-cycle'),
+    csrInstret: document.getElementById('csr-instret'),
 };
 
-// --- Memory Implementation for UI ---
+// --- Memory Implementation ---
 class UiMemory extends RiscvMemory {
     constructor(terminalEl) {
         super(1 << 20); // 1MB Memory
@@ -25,10 +36,7 @@ class UiMemory extends RiscvMemory {
     }
 
     read(address, width) {
-        // Handle Magic MMIO address for output
-        if (address === 0x10000000) {
-            return (width === 4 || width === 1) ? 0 : null;
-        }
+        if (address === 0x10000000) return (width === 4 || width === 1) ? 0 : null;
         return super.read(address, width);
     }
 
@@ -53,10 +61,12 @@ let state = {
     running: false,
     started: false,
     timer: null,
-    oldRegs: null // For highlighting changes
+
+    lastRegs: new Uint32Array(32), 
+    lastCsr: {} 
 };
 
-// --- Constants ---
+// --- Constants & Helpers ---
 const REG_NAMES = "zero ra sp gp tp t0 t1 t2 s0 s1 a0 a1 a2 a3 a4 a5 a6 a7 s2 s3 s4 s5 s6 s7 s8 s9 s10 s11 t3 t4 t5 t6".split(' ');
 const CAUSES = new Map([
     [0x00, "Instruction address misaligned"],
@@ -69,8 +79,13 @@ const CAUSES = new Map([
     [0x0b, "Machine ECALL"]
 ]);
 
-// --- Helper Functions ---
 const fmtHex = (x) => `0x${(x >>> 0).toString(16).padStart(8, '0')}`;
+const fmtHex64 = (hi, lo) => `0x${(hi >>> 0).toString(16).padStart(8, '0')}_${(lo >>> 0).toString(16).padStart(8, '0')}`;
+
+function logToTerminal(msg) {
+    els.terminal.textContent += msg + '\n';
+    els.terminal.scrollTop = els.terminal.scrollHeight;
+}
 
 function showError(msg) {
     els.statusMsg.textContent = msg;
@@ -84,59 +99,93 @@ function clearError() {
 
 function initRegGrid() {
     els.regContainer.innerHTML = '';
-    // Generate boxes for x0-x31
     for (let i = 0; i < 32; i++) {
         const div = document.createElement('div');
         div.className = 'reg-item';
         div.id = `reg-x${i}`;
         div.innerHTML = `
-            <span class="reg-name">x${i} (${REG_NAMES[i]})</span>
+            <span class="reg-name">x${i} ${REG_NAMES[i]}</span>
             <span class="reg-val">0x00000000</span>
         `;
         els.regContainer.appendChild(div);
     }
-    // Add CSRs explicitly if needed, or append them
 }
 
-function updateRegView() {
+// --- View Updates ---
+
+function updateView(forceReset = false) {
     if (!state.riscv) return;
     
-    const currentRegs = state.riscv.regs;
-    els.pcBadge.textContent = `PC: ${fmtHex(state.riscv.pc)}`;
+    const dump = state.riscv.dump_state();
+    
+    // 1. Update PC
+    els.pcBadge.textContent = `PC: ${fmtHex(dump.pc)}`;
 
+    // 2. Update General Purpose Registers (GPR)
     for (let i = 0; i < 32; i++) {
         const el = document.getElementById(`reg-x${i}`);
         const valSpan = el.querySelector('.reg-val');
-        const newVal = currentRegs[i];
-        const valStr = fmtHex(newVal);
+        const currentVal = dump.regs[i];
+        const oldVal = state.lastRegs[i];
 
-        if (valSpan.textContent !== valStr) {
-            valSpan.textContent = valStr;
+        valSpan.textContent = fmtHex(currentVal);
+
+        // Logic: Highlight if value is different from previous step
+        // Keep highlighted until it matches again (unlikely) or just stays highlighted if changed recently?
+        // User requested: "always highlight if changed compared to last"
+        if (!forceReset && currentVal !== oldVal) {
             el.classList.add('reg-changed');
-            setTimeout(() => el.classList.remove('reg-changed'), 500);
+        } else {
+            // Only remove highlight if it's strictly equal to previous, 
+            // BUT usually in emulators, "Changed" means "Changed in the last executed instruction".
+            // So we clear all highlights first usually, then apply new ones.
+            // However, to make it "stable", we compare to `state.lastRegs`.
+            // If we want the highlight to persist across multiple steps ONLY if it keeps changing, that's one thing.
+            // If we want it to persist as "this register was modified recently", that's another.
+            // Standard behavior: Reset highlight class, then apply if diff.
+            el.classList.remove('reg-changed');
+            if (!forceReset && currentVal !== oldVal) {
+                el.classList.add('reg-changed');
+            }
         }
     }
+
+    // 3. Update CSRs
+    const privLabels = { 0: 'User', 3: 'Machine' };
+    const privStr = `${dump.priv} (${privLabels[dump.priv] || '???'})`;
+    const mppStr = `${dump.mpp} (${privLabels[dump.mpp] || '???'})`;
+    
+    // Helper to update text and highlight change
+    const updateCsr = (el, valStr, key) => {
+        const old = state.lastCsr[key];
+        el.textContent = valStr;
+        el.classList.remove('value-changed');
+        if (!forceReset && valStr !== old) {
+            el.classList.add('value-changed');
+        }
+        state.lastCsr[key] = valStr; // Update cache for next time
+    };
+
+    updateCsr(els.csrPriv, privStr, 'priv');
+    updateCsr(els.csrMstatus, fmtHex(dump.priv << 11), 'mstatus'); // Approximate from mpp
+    updateCsr(els.csrMpp, mppStr, 'mpp');
+    
+    updateCsr(els.csrMscratch, fmtHex(dump.mscratch), 'mscratch');
+    updateCsr(els.csrMtvec, fmtHex(dump.mtvec), 'mtvec');
+    updateCsr(els.csrMepc, fmtHex(dump.mepc), 'mepc');
+    updateCsr(els.csrMtval, fmtHex(dump.mtval), 'mtval');
+    updateCsr(els.csrMcause, fmtHex(dump.mcause), 'mcause');
+    
+    updateCsr(els.csrCycle, fmtHex64(dump.cycle[1], dump.cycle[0]), 'cycle');
+    updateCsr(els.csrInstret, fmtHex64(dump.instret[1], dump.instret[0]), 'instret');
+
+    // Update 'Last State' for next comparison
+    state.lastRegs.set(dump.regs);
 }
 
-// --- Emulator Actions ---
+// --- Logic ---
 
-function stopEmulator() {
-    state.running = false;
-    state.started = false;
-    clearTimeout(state.timer);
-    
-    els.editor.disabled = false;
-    els.btnRun.innerHTML = '<span class="material-symbols-outlined">play_arrow</span> Run';
-    els.btnStep.disabled = true;
-    els.btnReset.disabled = true;
-    state.riscv = null;
-    state.mem = null;
-    
-    // Clear visualization
-    updateRegView(); // Will just keep last state or can be cleared
-}
-
-function startEmulator() {
+function start() {
     clearError();
     const code = els.editor.value;
     const origin = 0x40000000;
@@ -145,40 +194,69 @@ function startEmulator() {
     
     if (res.type === 'errors') {
         const firstErr = res.errors[0];
-        showError(`Line ${firstErr.lineno}: ${firstErr.message}`);
-        return false;
+        showError(`Assemble Error (Line ${firstErr.lineno}): ${firstErr.message}`);
+        return;
     }
 
-    // Initialize Memory & CPU
     state.mem = new UiMemory(els.terminal);
-    // Load program
     new Uint8Array(state.mem.memory).set(new Uint8Array(res.data));
     
     state.riscv = new RiscvState(state.mem);
     state.riscv.pc = res.symbols.get('_start') ?? origin;
-    state.riscv.regs[2] = origin + state.mem.memory.byteLength; // SP init
+    state.riscv.regs[2] = origin + state.mem.memory.byteLength; // SP
+
+    // Initialize "Last State" to zeros so initial load highlights changes (optional, or sync to current)
+    state.lastRegs.fill(0); 
+    state.lastCsr = {};
 
     state.started = true;
-    els.editor.disabled = true;
-    els.btnStep.disabled = false;
-    els.btnReset.disabled = false;
+    state.running = false;
     
-    updateRegView();
-    return true;
+    // Update UI Controls
+    els.editor.disabled = true;
+    els.btnStartStop.innerHTML = '<span class="material-symbols-outlined">stop_circle</span> Stop';
+    els.btnStartStop.classList.replace('md-btn-filled', 'md-btn-outlined');
+    els.btnRun.disabled = false;
+    els.btnStep.disabled = false;
+    
+    logToTerminal('[ Started ]');
+    updateView(true); // true = force reset highlights (show initial state clean)
+}
+
+function stop() {
+    state.running = false;
+    state.started = false;
+    clearTimeout(state.timer);
+    
+    state.riscv = null;
+    state.mem = null;
+
+    // UI Reset
+    els.editor.disabled = false;
+    els.btnStartStop.innerHTML = '<span class="material-symbols-outlined">power_settings_new</span> Start';
+    els.btnStartStop.classList.replace('md-btn-outlined', 'md-btn-filled');
+    
+    els.btnRun.innerHTML = '<span class="material-symbols-outlined">play_arrow</span> Run';
+    els.btnRun.disabled = true;
+    els.btnStep.disabled = true;
+    
+    logToTerminal('[ Stopped ]');
 }
 
 function step() {
     if (!state.started) return;
 
+    // Cache current state before stepping to allow 'diff' in updateView
+    // Note: updateView actually handles the diff by comparing riscv.dump_state() vs state.lastRegs
+    // So we just execute step.
+    
     const res = state.riscv.step();
-    updateRegView();
+    updateView(); // This will compare new state vs lastRegs, highlight diffs, then update lastRegs
 
     if (res.type === 'exception') {
         const causeStr = CAUSES.get(res.cause) || `Unknown (${res.cause})`;
-        showError(`Exception: ${causeStr} at PC=${fmtHex(res.epc)}`);
-        if (els.checkPause.checked) {
-            pause();
-        }
+        showError(`Exception: ${causeStr} @PC=${fmtHex(res.epc)}`);
+        if (els.checkPause.checked) pause();
     } else if (res.type === 'stop') {
         showError("Program halted (ebreak)");
         pause();
@@ -186,27 +264,29 @@ function step() {
 }
 
 function runLoop() {
-    const STEPS_PER_LOOP = 100; // Speed control
     if (!state.running) return;
+    const STEPS_PER_BATCH = 50; // Speed adjustment
 
-    for (let i = 0; i < STEPS_PER_LOOP; i++) {
+    for (let i = 0; i < STEPS_PER_BATCH; i++) {
         const res = state.riscv.step();
         
         if (res.type === 'exception') {
-            updateRegView();
+            updateView();
             const causeStr = CAUSES.get(res.cause) || `Unknown (${res.cause})`;
-            showError(`Exception: ${causeStr} at PC=${fmtHex(res.epc)}`);
-            if (els.checkPause.checked) pause();
-            return;
+            showError(`Exception: ${causeStr}`);
+            if (els.checkPause.checked) {
+                pause();
+                return;
+            }
         } else if (res.type === 'stop') {
-            updateRegView();
+            updateView();
             showError("Program halted (ebreak)");
             pause();
             return;
         }
     }
     
-    updateRegView();
+    updateView(); // Update visuals once per batch
     state.timer = setTimeout(runLoop, 0);
 }
 
@@ -214,12 +294,10 @@ function toggleRun() {
     if (state.running) {
         pause();
     } else {
-        if (!state.started) {
-            if (!startEmulator()) return;
-        }
+        if (!state.started) return;
         state.running = true;
         els.btnRun.innerHTML = '<span class="material-symbols-outlined">pause</span> Pause';
-        els.btnStep.disabled = true;
+        els.btnStep.disabled = true; // Disable Step while running
         runLoop();
     }
 }
@@ -233,20 +311,16 @@ function pause() {
 
 // --- Event Listeners ---
 
+els.btnStartStop.addEventListener('click', () => {
+    if (state.started) stop();
+    else start();
+});
+
 els.btnRun.addEventListener('click', toggleRun);
 
 els.btnStep.addEventListener('click', () => {
-    if (!state.started) {
-        if (!startEmulator()) return;
-    }
+    pause(); // Safety
     step();
-});
-
-els.btnReset.addEventListener('click', () => {
-    stopEmulator();
-    els.terminal.textContent = '';
-    clearError();
-    initRegGrid();
 });
 
 els.btnClearTerm.addEventListener('click', () => {
