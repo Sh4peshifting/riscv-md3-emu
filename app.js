@@ -1,10 +1,11 @@
+// SPDX-License-Identifier: CC0-1.0 OR 0BSD
 import { RiscvState, RiscvMemory } from './emulator.js';
 import { assemble_riscv } from './assembler.js';
 
-// --- UI Elements ---
 const els = {
     editor: document.getElementById('source-code'),
     btnStartStop: document.getElementById('btn-start-stop'),
+    btnReset: document.getElementById('btn-reset'), 
     btnRun: document.getElementById('btn-run'),
     btnStep: document.getElementById('btn-step'),
     btnClearTerm: document.getElementById('btn-clear-term'),
@@ -27,19 +28,16 @@ const els = {
     csrInstret: document.getElementById('csr-instret'),
 };
 
-// --- Memory Implementation ---
 class UiMemory extends RiscvMemory {
     constructor(terminalEl) {
-        super(1 << 20); // 1MB Memory
+        super(1 << 20); 
         this.terminalEl = terminalEl;
         this.decoder = new TextDecoder();
     }
-
     read(address, width) {
         if (address === 0x10000000) return (width === 4 || width === 1) ? 0 : null;
         return super.read(address, width);
     }
-
     write(address, width, data) {
         if (address === 0x10000000) {
             if (width === 4 || width === 1) {
@@ -54,19 +52,16 @@ class UiMemory extends RiscvMemory {
     }
 }
 
-// --- State Management ---
 let state = {
     mem: null,
     riscv: null,
     running: false,
     started: false,
     timer: null,
-
     lastRegs: new Uint32Array(32), 
     lastCsr: {} 
 };
 
-// --- Constants & Helpers ---
 const REG_NAMES = "zero ra sp gp tp t0 t1 t2 s0 s1 a0 a1 a2 a3 a4 a5 a6 a7 s2 s3 s4 s5 s6 s7 s8 s9 s10 s11 t3 t4 t5 t6".split(' ');
 const CAUSES = new Map([
     [0x00, "Instruction address misaligned"],
@@ -111,17 +106,14 @@ function initRegGrid() {
     }
 }
 
-// --- View Updates ---
-
 function updateView(forceReset = false) {
     if (!state.riscv) return;
     
     const dump = state.riscv.dump_state();
     
-    // 1. Update PC
+    // PC Badge Color is now handled by CSS var, text content here
     els.pcBadge.textContent = `PC: ${fmtHex(dump.pc)}`;
 
-    // 2. Update General Purpose Registers (GPR)
     for (let i = 0; i < 32; i++) {
         const el = document.getElementById(`reg-x${i}`);
         const valSpan = el.querySelector('.reg-val');
@@ -130,19 +122,9 @@ function updateView(forceReset = false) {
 
         valSpan.textContent = fmtHex(currentVal);
 
-        // Logic: Highlight if value is different from previous step
-        // Keep highlighted until it matches again (unlikely) or just stays highlighted if changed recently?
-        // User requested: "always highlight if changed compared to last"
         if (!forceReset && currentVal !== oldVal) {
             el.classList.add('reg-changed');
         } else {
-            // Only remove highlight if it's strictly equal to previous, 
-            // BUT usually in emulators, "Changed" means "Changed in the last executed instruction".
-            // So we clear all highlights first usually, then apply new ones.
-            // However, to make it "stable", we compare to `state.lastRegs`.
-            // If we want the highlight to persist across multiple steps ONLY if it keeps changing, that's one thing.
-            // If we want it to persist as "this register was modified recently", that's another.
-            // Standard behavior: Reset highlight class, then apply if diff.
             el.classList.remove('reg-changed');
             if (!forceReset && currentVal !== oldVal) {
                 el.classList.add('reg-changed');
@@ -150,12 +132,10 @@ function updateView(forceReset = false) {
         }
     }
 
-    // 3. Update CSRs
     const privLabels = { 0: 'User', 3: 'Machine' };
     const privStr = `${dump.priv} (${privLabels[dump.priv] || '???'})`;
     const mppStr = `${dump.mpp} (${privLabels[dump.mpp] || '???'})`;
     
-    // Helper to update text and highlight change
     const updateCsr = (el, valStr, key) => {
         const old = state.lastCsr[key];
         el.textContent = valStr;
@@ -163,27 +143,22 @@ function updateView(forceReset = false) {
         if (!forceReset && valStr !== old) {
             el.classList.add('value-changed');
         }
-        state.lastCsr[key] = valStr; // Update cache for next time
+        state.lastCsr[key] = valStr;
     };
 
     updateCsr(els.csrPriv, privStr, 'priv');
-    updateCsr(els.csrMstatus, fmtHex(dump.priv << 11), 'mstatus'); // Approximate from mpp
+    updateCsr(els.csrMstatus, fmtHex(dump.priv << 11), 'mstatus');
     updateCsr(els.csrMpp, mppStr, 'mpp');
-    
     updateCsr(els.csrMscratch, fmtHex(dump.mscratch), 'mscratch');
     updateCsr(els.csrMtvec, fmtHex(dump.mtvec), 'mtvec');
     updateCsr(els.csrMepc, fmtHex(dump.mepc), 'mepc');
     updateCsr(els.csrMtval, fmtHex(dump.mtval), 'mtval');
     updateCsr(els.csrMcause, fmtHex(dump.mcause), 'mcause');
-    
     updateCsr(els.csrCycle, fmtHex64(dump.cycle[1], dump.cycle[0]), 'cycle');
     updateCsr(els.csrInstret, fmtHex64(dump.instret[1], dump.instret[0]), 'instret');
 
-    // Update 'Last State' for next comparison
     state.lastRegs.set(dump.regs);
 }
-
-// --- Logic ---
 
 function start() {
     clearError();
@@ -203,35 +178,32 @@ function start() {
     
     state.riscv = new RiscvState(state.mem);
     state.riscv.pc = res.symbols.get('_start') ?? origin;
-    state.riscv.regs[2] = origin + state.mem.memory.byteLength; // SP
+    state.riscv.regs[2] = origin + state.mem.memory.byteLength;
 
-    // Initialize "Last State" to zeros so initial load highlights changes (optional, or sync to current)
     state.lastRegs.fill(0); 
     state.lastCsr = {};
 
     state.started = true;
     state.running = false;
     
-    // Update UI Controls
     els.editor.disabled = true;
     els.btnStartStop.innerHTML = '<span class="material-symbols-outlined">stop_circle</span> Stop';
     els.btnStartStop.classList.replace('md-btn-filled', 'md-btn-outlined');
     els.btnRun.disabled = false;
     els.btnStep.disabled = false;
+    els.btnReset.disabled = false; // Enable reset
     
     logToTerminal('[ Started ]');
-    updateView(true); // true = force reset highlights (show initial state clean)
+    updateView(true);
 }
 
 function stop() {
     state.running = false;
     state.started = false;
     clearTimeout(state.timer);
-    
     state.riscv = null;
     state.mem = null;
 
-    // UI Reset
     els.editor.disabled = false;
     els.btnStartStop.innerHTML = '<span class="material-symbols-outlined">power_settings_new</span> Start';
     els.btnStartStop.classList.replace('md-btn-outlined', 'md-btn-filled');
@@ -239,19 +211,24 @@ function stop() {
     els.btnRun.innerHTML = '<span class="material-symbols-outlined">play_arrow</span> Run';
     els.btnRun.disabled = true;
     els.btnStep.disabled = true;
+    els.btnReset.disabled = true; // Disable reset
     
     logToTerminal('[ Stopped ]');
 }
 
+function reset() {
+    if (!state.started) return;
+    // Hard reset: Stop first to clear state, then immediately Start again
+    stop();
+    // Clear the terminal completely on reset
+    els.terminal.textContent = '';
+    start();
+}
+
 function step() {
     if (!state.started) return;
-
-    // Cache current state before stepping to allow 'diff' in updateView
-    // Note: updateView actually handles the diff by comparing riscv.dump_state() vs state.lastRegs
-    // So we just execute step.
-    
     const res = state.riscv.step();
-    updateView(); // This will compare new state vs lastRegs, highlight diffs, then update lastRegs
+    updateView(); 
 
     if (res.type === 'exception') {
         const causeStr = CAUSES.get(res.cause) || `Unknown (${res.cause})`;
@@ -265,7 +242,7 @@ function step() {
 
 function runLoop() {
     if (!state.running) return;
-    const STEPS_PER_BATCH = 50; // Speed adjustment
+    const STEPS_PER_BATCH = 50;
 
     for (let i = 0; i < STEPS_PER_BATCH; i++) {
         const res = state.riscv.step();
@@ -285,8 +262,7 @@ function runLoop() {
             return;
         }
     }
-    
-    updateView(); // Update visuals once per batch
+    updateView();
     state.timer = setTimeout(runLoop, 0);
 }
 
@@ -297,7 +273,7 @@ function toggleRun() {
         if (!state.started) return;
         state.running = true;
         els.btnRun.innerHTML = '<span class="material-symbols-outlined">pause</span> Pause';
-        els.btnStep.disabled = true; // Disable Step while running
+        els.btnStep.disabled = true;
         runLoop();
     }
 }
@@ -309,8 +285,7 @@ function pause() {
     els.btnStep.disabled = false;
 }
 
-// --- Event Listeners ---
-
+// Event Listeners
 els.btnStartStop.addEventListener('click', () => {
     if (state.started) stop();
     else start();
@@ -318,8 +293,12 @@ els.btnStartStop.addEventListener('click', () => {
 
 els.btnRun.addEventListener('click', toggleRun);
 
+els.btnReset.addEventListener('click', () => {
+   reset(); 
+});
+
 els.btnStep.addEventListener('click', () => {
-    pause(); // Safety
+    pause();
     step();
 });
 
