@@ -327,9 +327,9 @@ function applyTheme(mode) {
     localStorage.setItem('theme', mode);
     
     if (mode === 'auto') {
-        document.body.removeAttribute('data-theme');
+        document.documentElement.removeAttribute('data-theme');
     } else {
-        document.body.setAttribute('data-theme', mode);
+        document.documentElement.setAttribute('data-theme', mode);
     }
     
     const iconSpan = els.btnTheme.querySelector('span');
