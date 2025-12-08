@@ -15,6 +15,10 @@
     <header class="top-app-bar">
         <span class="material-symbols-outlined icon">memory</span>
         <h1>RISC-V Emulator</h1>
+        <div style="flex: 1;"></div>
+        <button id="btn-theme" class="icon-btn" title="Switch Theme">
+            <span class="material-symbols-outlined">brightness_auto</span>
+        </button>
     </header>
 
     <main class="container">
@@ -31,6 +35,7 @@
                     </div>
                 </div>
                 <div class="editor-wrapper">
+                    <div id="editor-highlight" class="highlight-line"></div>
                     <textarea id="source-code" spellcheck="false" placeholder="# RISC-V Assembly
 .global _start
 _start:

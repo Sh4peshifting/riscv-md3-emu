@@ -22,14 +22,15 @@
     /* Highlight */
     --highlight-bg: var(--md-primary-container);
     --highlight-text: var(--md-on-primary-container);
+    --code-highlight-line: rgba(0, 108, 76, 0.15);
 
     --font-code: 'Roboto Mono', monospace;
     --font-body: 'Roboto', sans-serif;
 }
 
-/* --- Dark Theme (Auto) --- */
+/* --- Dark Theme (Auto or Manual) --- */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
         --md-primary: #4ce1a5; 
         --md-on-primary: #003825;
         --md-primary-container: #005138; 
@@ -49,10 +50,35 @@
         --md-error-container: #93000a;
         --md-on-error-container: #ffdad6;
 
-        /* Dark mode highlight */
         --highlight-bg: #005138; 
         --highlight-text: #fff;
+        --code-highlight-line: rgba(76, 225, 165, 0.2);
     }
+}
+
+[data-theme="dark"] {
+    --md-primary: #4ce1a5; 
+    --md-on-primary: #003825;
+    --md-primary-container: #005138; 
+    --md-on-primary-container: #89f8c7;
+
+    --md-secondary-container: #334b41;
+    --md-on-secondary-container: #cce8e0;
+
+    --md-surface: #191c1a;
+    --md-surface-container: #1e211f; 
+    --md-surface-card: #252927; 
+    --md-on-surface: #e1e3df;
+    --md-on-surface-variant: #bfc9c2;
+
+    --md-outline: #89938d;
+    --md-divider: #3f4944;
+    --md-error-container: #93000a;
+    --md-on-error-container: #ffdad6;
+
+    --highlight-bg: #005138; 
+    --highlight-text: #fff;
+    --code-highlight-line: rgba(76, 225, 165, 0.2);
 }
 
 * { box-sizing: border-box; }
@@ -68,7 +94,7 @@ body {
     transition: background-color 0.3s, color 0.3s;
 }
 
-/* --- Header Refined --- */
+/* --- Header --- */
 .top-app-bar {
     display: flex;
     align-items: center;
@@ -145,6 +171,7 @@ body {
     overflow: hidden;
     margin-bottom: 12px;
     background-color: var(--md-surface); 
+    position: relative;
 }
 textarea {
     width: 100%;
@@ -158,6 +185,19 @@ textarea {
     outline: none;
     background-color: transparent;
     color: var(--md-on-surface);
+    position: relative;
+    z-index: 2;
+}
+
+.highlight-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 21px; /* 14px * 1.5 */
+    background-color: var(--code-highlight-line);
+    z-index: 1;
+    pointer-events: none;
+    display: none;
 }
 
 /* Controls */

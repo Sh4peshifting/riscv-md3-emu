@@ -1197,11 +1197,13 @@ export function assemble_riscv(text, origin) {
         };
     } else {
         const lines = text.split('\n');
+        const lineMap = new Map();
         for (const [pc, chunk] of chunks) {
             if (chunk.parsed.type === 'instruction') {
                 const insns = new Uint32Array(buf.slice(pc - origin, pc - origin + chunk.parsed.length));
                 const formatted = [... insns].map(x => x.toString(16).padStart(8, '0')).join(' ');
                 lines[chunk.lineno - 1] = `{ 0x${pc.toString(16).padStart(8, '0')}: ${formatted} } ${lines[chunk.lineno - 1].trimStart()}`;
+                lineMap.set(pc, chunk.lineno);
             }
         }
 
@@ -1211,7 +1213,8 @@ export function assemble_riscv(text, origin) {
             type: 'ok',
             data: buf,
             dump: `# Symbols\n${sym.join('\n')}\n\n${lines.join('\n')}\n`,
-            symbols: new Map(label)
+            symbols: new Map(label),
+            lineMap: lineMap
         };
     }
 }

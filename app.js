@@ -4,11 +4,13 @@ import { assemble_riscv } from './assembler.js';
 
 const els = {
     editor: document.getElementById('source-code'),
+    editorHighlight: document.getElementById('editor-highlight'),
     btnStartStop: document.getElementById('btn-start-stop'),
     btnReset: document.getElementById('btn-reset'), 
     btnRun: document.getElementById('btn-run'),
     btnStep: document.getElementById('btn-step'),
     btnClearTerm: document.getElementById('btn-clear-term'),
+    btnTheme: document.getElementById('btn-theme'),
     checkPause: document.getElementById('check-pause'),
     regContainer: document.getElementById('registers-container'),
     terminal: document.getElementById('terminal-output'),
@@ -59,7 +61,9 @@ let state = {
     started: false,
     timer: null,
     lastRegs: new Uint32Array(32), 
-    lastCsr: {} 
+    lastCsr: {},
+    pcToLine: new Map(),
+    themeMode: 'auto'
 };
 
 const REG_NAMES = "zero ra sp gp tp t0 t1 t2 s0 s1 a0 a1 a2 a3 a4 a5 a6 a7 s2 s3 s4 s5 s6 s7 s8 s9 s10 s11 t3 t4 t5 t6".split(' ');
@@ -111,6 +115,14 @@ function updateView(forceReset = false) {
     
     const dump = state.riscv.dump_state();
     
+    // Highlight current line
+    if (state.pcToLine.has(dump.pc)) {
+        const lineNo = state.pcToLine.get(dump.pc);
+        updateEditorHighlight(lineNo);
+    } else {
+        els.editorHighlight.style.display = 'none';
+    }
+
     // PC Badge Color is now handled by CSS var, text content here
     els.pcBadge.textContent = `PC: ${fmtHex(dump.pc)}`;
 
@@ -160,6 +172,19 @@ function updateView(forceReset = false) {
     state.lastRegs.set(dump.regs);
 }
 
+function updateEditorHighlight(lineNo) {
+    if (!lineNo) {
+        els.editorHighlight.style.display = 'none';
+        return;
+    }
+    const lineHeight = 21; // 14px * 1.5
+    const paddingTop = 12;
+    const top = paddingTop + (lineNo - 1) * lineHeight - els.editor.scrollTop;
+    
+    els.editorHighlight.style.top = `${top}px`;
+    els.editorHighlight.style.display = 'block';
+}
+
 function start() {
     clearError();
     const code = els.editor.value;
@@ -172,6 +197,8 @@ function start() {
         showError(`Assemble Error (Line ${firstErr.lineno}): ${firstErr.message}`);
         return;
     }
+
+    state.pcToLine = res.lineMap || new Map();
 
     state.mem = new UiMemory(els.terminal);
     new Uint8Array(state.mem.memory).set(new Uint8Array(res.data));
@@ -203,6 +230,8 @@ function stop() {
     clearTimeout(state.timer);
     state.riscv = null;
     state.mem = null;
+    state.pcToLine = new Map();
+    els.editorHighlight.style.display = 'none';
 
     els.editor.disabled = false;
     els.btnStartStop.innerHTML = '<span class="material-symbols-outlined">power_settings_new</span> Start';
@@ -285,7 +314,44 @@ function pause() {
     els.btnStep.disabled = false;
 }
 
+// Theme Logic
+const THEMES = ['auto', 'light', 'dark'];
+const THEME_ICONS = {
+    'auto': 'brightness_auto',
+    'light': 'light_mode',
+    'dark': 'dark_mode'
+};
+
+function applyTheme(mode) {
+    state.themeMode = mode;
+    localStorage.setItem('theme', mode);
+    
+    if (mode === 'auto') {
+        document.body.removeAttribute('data-theme');
+    } else {
+        document.body.setAttribute('data-theme', mode);
+    }
+    
+    const iconSpan = els.btnTheme.querySelector('span');
+    iconSpan.textContent = THEME_ICONS[mode];
+}
+
+function toggleTheme() {
+    const currentIdx = THEMES.indexOf(state.themeMode);
+    const nextIdx = (currentIdx + 1) % THEMES.length;
+    applyTheme(THEMES[nextIdx]);
+}
+
 // Event Listeners
+els.btnTheme.addEventListener('click', toggleTheme);
+
+els.editor.addEventListener('scroll', () => {
+    if (state.started && state.riscv) {
+        const lineNo = state.pcToLine.get(state.riscv.pc);
+        if (lineNo) updateEditorHighlight(lineNo);
+    }
+});
+
 els.btnStartStop.addEventListener('click', () => {
     if (state.started) stop();
     else start();
@@ -308,3 +374,4 @@ els.btnClearTerm.addEventListener('click', () => {
 
 // Init
 initRegGrid();
+applyTheme(localStorage.getItem('theme') || 'auto');
