@@ -7,6 +7,7 @@ const els = {
     editorHighlight: document.getElementById('editor-highlight'),
     btnStartStop: document.getElementById('btn-start-stop'),
     btnReset: document.getElementById('btn-reset'), 
+    btnDump: document.getElementById('btn-dump'),
     btnRun: document.getElementById('btn-run'),
     btnStep: document.getElementById('btn-step'),
     btnClearTerm: document.getElementById('btn-clear-term'),
@@ -28,6 +29,13 @@ const els = {
     csrMcause: document.getElementById('csr-mcause'),
     csrCycle: document.getElementById('csr-cycle'),
     csrInstret: document.getElementById('csr-instret'),
+
+    // Modal Elements
+    modalDump: document.getElementById('dump-modal'),
+    modalContent: document.getElementById('dump-content'),
+    btnCloseModal: document.getElementById('btn-close-modal'),
+    btnCloseModalAction: document.getElementById('btn-close-modal-action'),
+    btnCopyDump: document.getElementById('btn-copy-dump'),
 };
 
 class UiMemory extends RiscvMemory {
@@ -63,6 +71,7 @@ let state = {
     lastRegs: new Uint32Array(32), 
     lastCsr: {},
     pcToLine: new Map(),
+    dumpStr: "",
     themeMode: 'auto'
 };
 
@@ -199,6 +208,7 @@ function start() {
     }
 
     state.pcToLine = res.lineMap || new Map();
+    state.dumpStr = res.dump;
 
     state.mem = new UiMemory(els.terminal);
     new Uint8Array(state.mem.memory).set(new Uint8Array(res.data));
@@ -219,6 +229,7 @@ function start() {
     els.btnRun.disabled = false;
     els.btnStep.disabled = false;
     els.btnReset.disabled = false; // Enable reset
+    els.btnDump.disabled = false; // Enable dump
     
     logToTerminal('[ Started ]');
     updateView(true);
@@ -231,6 +242,7 @@ function stop() {
     state.riscv = null;
     state.mem = null;
     state.pcToLine = new Map();
+    state.dumpStr = "";
     els.editorHighlight.style.display = 'none';
 
     els.editor.disabled = false;
@@ -241,6 +253,7 @@ function stop() {
     els.btnRun.disabled = true;
     els.btnStep.disabled = true;
     els.btnReset.disabled = true; // Disable reset
+    els.btnDump.disabled = true; // Disable dump
     
     logToTerminal('[ Stopped ]');
 }
@@ -314,6 +327,26 @@ function pause() {
     els.btnStep.disabled = false;
 }
 
+// Modal Logic
+function showDump() {
+    els.modalContent.textContent = state.dumpStr;
+    els.modalDump.classList.remove('hidden');
+}
+
+function hideDump() {
+    els.modalDump.classList.add('hidden');
+}
+
+function copyDump() {
+    navigator.clipboard.writeText(state.dumpStr).then(() => {
+        const originalHtml = els.btnCopyDump.innerHTML;
+        els.btnCopyDump.innerHTML = '<span class="material-symbols-outlined">check</span> Copied';
+        setTimeout(() => {
+            els.btnCopyDump.innerHTML = originalHtml;
+        }, 2000);
+    });
+}
+
 // Theme Logic
 const THEMES = ['auto', 'light', 'dark'];
 const THEME_ICONS = {
@@ -361,6 +394,14 @@ els.btnRun.addEventListener('click', toggleRun);
 
 els.btnReset.addEventListener('click', () => {
    reset(); 
+});
+
+els.btnDump.addEventListener('click', showDump);
+els.btnCloseModal.addEventListener('click', hideDump);
+els.btnCloseModalAction.addEventListener('click', hideDump);
+els.btnCopyDump.addEventListener('click', copyDump);
+els.modalDump.addEventListener('click', (e) => {
+    if (e.target === els.modalDump) hideDump();
 });
 
 els.btnStep.addEventListener('click', () => {

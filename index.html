@@ -54,6 +54,9 @@ _start:
                         <button id="btn-reset" class="md-btn md-btn-text" disabled>
                             <span class="material-symbols-outlined">restart_alt</span> Reset
                         </button>
+                        <button id="btn-dump" class="md-btn md-btn-text" disabled>
+                            <span class="material-symbols-outlined">description</span> Dump
+                        </button>
 
                         <div class="separator"></div>
 
@@ -115,6 +118,25 @@ _start:
             </div>
         </section>
     </main>
+
+    <!-- Dump Modal -->
+    <div id="dump-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Memory Dump</h2>
+                <button id="btn-close-modal" class="icon-btn"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            <div class="modal-content">
+                <pre id="dump-content"></pre>
+            </div>
+            <div class="modal-actions">
+                <button id="btn-copy-dump" class="md-btn md-btn-text">
+                    <span class="material-symbols-outlined">content_copy</span> Copy
+                </button>
+                <button id="btn-close-modal-action" class="md-btn md-btn-filled">Close</button>
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="app.js"></script>
 </body>
